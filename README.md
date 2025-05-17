@@ -3,6 +3,7 @@
 ![logo](https://github.com/Druidblack/jellyfin_ratings/blob/main/img/logo.png)
 
 Replaces jellyfish ratings with ratings from various sources (IMDb, Trakt, Imdb, Letterboxd, Tomato, Popcorn, Metacritic, RogerEbert, and MyAnimeList) obtained from mdblist.com
+To get ratings, you must have a plugin for getting data from TMDB and an ID.
 
 Example
 
