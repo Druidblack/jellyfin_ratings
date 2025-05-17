@@ -2,7 +2,7 @@
 
 ![logo](https://github.com/Druidblack/jellyfin_ratings/blob/main/img/logo.png)
 
-Replaces jellyfish ratings with ratings from various sources (IMDb, Trakt, Imdb, Letterboxd, Tomato, Popcorn, Metacritic, RogerEbert, and Myanmar) obtained from mdblist.com
+Replaces jellyfish ratings with ratings from various sources (IMDb, Trakt, Imdb, Letterboxd, Tomato, Popcorn, Metacritic, RogerEbert, and MyAnimeList) obtained from mdblist.com
 
 Example
 
