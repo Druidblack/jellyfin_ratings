@@ -30,7 +30,7 @@ Install the plugin [Jellyfin Custom JavaScript Plugin](https://github.com/johnpc
 Copy the contents of the file [ratings.js](https://github.com/Druidblack/jellyfin_ratings/blob/main/ratings.js) in the plugin window. Save and reload the page.
 After installation, you may need to clear the cache. The cache for JMP is located at C:\Users\USERNAME\AppData\Local\Jellyfin Media Player\cache
 
-![js](https://github.com/Druidblack/jellyfin_ratings/blob/main/img/js.jpg)
+![js](https://github.com/Druidblack/jellyfin_ratings/blob/main/img/jss.jpg)
 
 # 3. Installation by modification index.html
 First, in the web root you need to create a 'ratings' (/usr/share/jellyfin/web) folder and put a file in it ratings.js. Once you do that, to activate a just add the following to your 'index.html' just before the final `</body></html>` tags 
