@@ -79,87 +79,164 @@ if (typeof GM_xmlhttpRequest === 'undefined') {
   scanLinks();
   setInterval(scanLinks, 1000);
 
-  function scanLinks() {
-    // получаем текущий IMDb ID
-    document.querySelectorAll('a.emby-button[href*="imdb.com/title/"]').forEach(a => {
-      if (a.dataset.imdbProcessed) return;
-      a.dataset.imdbProcessed = 'true';
-      const m = a.href.match(/imdb\.com\/title\/(tt\d+)/);
-      currentImdbId = m ? m[1] : null;
-      // удаляем старые контейнеры
-      document.querySelectorAll('.mdblist-rating-container').forEach(el => el.remove());
-    });
+// === Управление видимостью встроенных рейтингов (звёзды/критика) ===
+function getStarBox(node) {
+  return node?.closest('.itemMiscInfo.itemMiscInfo-primary') || node?.parentElement || null;
+}
 
-    // скрываем встроенные рейтинги
-    document.querySelectorAll(
-      'div.starRatingContainer.mediaInfoItem, div.mediaInfoItem.mediaInfoCriticRating'
-    ).forEach(el => {
+function setBuiltInStarsHidden(box, hide) {
+  if (!box) return;
+  const stars  = box.querySelector('.starRatingContainer.mediaInfoItem');
+  const critic = box.querySelector('.mediaInfoItem.mediaInfoCriticRating');
+
+  [stars, critic].forEach(el => {
+    if (!el) return;
+    if (hide) {
+      if (!('origStyle' in el.dataset)) {
+        el.dataset.origStyle = el.getAttribute('style') || '';
+      }
       el.style.color = 'transparent';
       el.style.fontSize = '0';
-    });
-
-    // обрабатываем TMDB-ссылки
-    document.querySelectorAll('a.emby-button[href*="themoviedb.org/"]').forEach(a => {
-      if (a.dataset.mdblistProcessed) return;
-      a.dataset.mdblistProcessed = 'true';
-      processLink(a);
-    });
-  }
-
-  function processLink(link) {
-    const m = link.href.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
-    if (!m) return;
-    const type   = m[1] === 'tv' ? 'show' : 'movie';
-    const tmdbId = m[2];
-    const spots = document.querySelectorAll('div.mediaInfoItem.mediaInfoText.mediaInfoOfficialRating');
-    if (spots.length) {
-      spots.forEach(el => insert(el, type, tmdbId));
     } else {
-      document.querySelectorAll('div.mediaInfoItem').forEach(el => {
-        if (/^\d+.*m$/i.test(el.textContent.trim())) {
-          insert(el, type, tmdbId);
-        }
-      });
+      if ('origStyle' in el.dataset) {
+        el.setAttribute('style', el.dataset.origStyle);
+        delete el.dataset.origStyle;
+      } else {
+        el.style.color = '';
+        el.style.fontSize = '';
+      }
     }
+  });
+}
+
+// скрываем встроенные рейтинги только если контейнер непустой
+function updateStarsVisibilityFor(container) {
+  if (!container) return;
+  const hasContent =
+    container.childElementCount > 0 ||
+    (container.textContent && container.textContent.trim().length > 0);
+  setBuiltInStarsHidden(getStarBox(container), hasContent);
+}
+
+// следим за наполнением контейнера
+function watchRatingContainer(container) {
+  // мгновенная проверка
+  setTimeout(() => updateStarsVisibilityFor(container), 0);
+
+  // реакции на асинхронные изменения
+  const obs = new MutationObserver(() => updateStarsVisibilityFor(container));
+  obs.observe(container, { childList: true, subtree: true, characterData: true });
+  container.__ratingsObserver = obs;
+}
+
+
+function scanLinks() {
+  // получаем текущий IMDb ID и при смене — чистим наши контейнеры аккуратно
+  document.querySelectorAll('a.emby-button[href*="imdb.com/title/"]').forEach(a => {
+    if (a.dataset.imdbProcessed) return;
+    a.dataset.imdbProcessed = 'true';
+    const m = a.href.match(/imdb\.com\/title\/(tt\d+)/);
+    const newImdbId = m ? m[1] : null;
+
+    // если страница обновилась — перед удалением наших контейнеров вернём звёзды и остановим наблюдателей
+    if (newImdbId !== currentImdbId) {
+      document.querySelectorAll('.mdblist-rating-container').forEach(el => {
+        try { el.__ratingsObserver?.disconnect(); } catch {}
+        setBuiltInStarsHidden(getStarBox(el), false);
+        el.remove();
+      });
+      currentImdbId = newImdbId;
+    }
+  });
+
+  // ⚠️ ВАЖНО: больше НЕ скрываем встроенные рейтинги здесь безусловно.
+  // Раньше было:
+  // document.querySelectorAll('div.starRatingContainer.mediaInfoItem, div.mediaInfoItem.mediaInfoCriticRating').forEach(...)
+
+  // обрабатываем TMDB-ссылки
+  document.querySelectorAll('a.emby-button[href*="themoviedb.org/"]').forEach(a => {
+    if (a.dataset.mdblistProcessed) return;
+    a.dataset.mdblistProcessed = 'true';
+    processLink(a);
+  });
+}
+
+
+function processLink(link) {
+  const m = link.href.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
+  if (!m) return;
+  const type   = m[1] === 'tv' ? 'show' : 'movie';
+  const tmdbId = m[2];
+
+  const presentRe = '(?:present|now|current|Н\\/В|Н\\.В\\.|н\\/в|н\\.в\\.|по\\s*наст\\.?\\s*времен[ию]?)';
+  const dash = '[–—-]'; // варианты тире/дефиса
+  const isYearish  = t => /^\d{4}$/.test(t) || new RegExp(`^\\d{4}\\s*${dash}\\s*(?:\\d{4}|${presentRe})$`, 'i').test(t);
+  const isRuntime  = t => /^\d+\\s*(?:m|min|мин)\\b/i.test(t);
+
+  // 1) Обрабатываем КАЖДЫЙ блок meta-инфы ровно один раз, выбирая единственный якорь по приоритету
+  document.querySelectorAll('.itemMiscInfo.itemMiscInfo-primary').forEach(box => {
+    const items = Array.from(box.querySelectorAll('.mediaInfoItem'));
+    const officialEl = box.querySelector('.mediaInfoItem.mediaInfoText.mediaInfoOfficialRating');
+    const yearEl     = items.find(el => isYearish((el.textContent || '').trim()));
+    const runtimeEl  = items.find(el => isRuntime((el.textContent || '').trim()));
+    const lastItem   = box.querySelector('.mediaInfoItem:last-of-type');
+
+    const anchor = officialEl || yearEl || runtimeEl || lastItem;
+    if (anchor) insert(anchor, type, tmdbId);
+  });
+
+  // 2) На случай, если официальный рейтинг есть вне .itemMiscInfo-primary (редко) — вставляем один раз и там
+  document.querySelectorAll('.mediaInfoItem.mediaInfoText.mediaInfoOfficialRating').forEach(el => {
+    if (!el.closest('.itemMiscInfo.itemMiscInfo-primary')) {
+      insert(el, type, tmdbId);
+    }
+  });
+}
+
+function insert(target, type, tmdbId) {
+  // удаляем предыдущий контейнер сразу после якоря
+  while (target.nextElementSibling?.classList.contains('mdblist-rating-container')) {
+    const old = target.nextElementSibling;
+    try { old.__ratingsObserver?.disconnect(); } catch {}
+    setBuiltInStarsHidden(getStarBox(old), false); // вернём звёзды на случай, если старый был пуст
+    old.remove();
   }
 
-  function insert(target, type, tmdbId) {
-    // удаляем предыдущий контейнер
-    while (target.nextElementSibling?.classList.contains('mdblist-rating-container')) {
-      target.nextElementSibling.remove();
-    }
-    const container = document.createElement('div');
-    container.className = 'mdblist-rating-container';
-    container.style.cssText = 'display:inline-flex; align-items:center; margin-left:6px;';
-    target.insertAdjacentElement('afterend', container);
+  const container = document.createElement('div');
+  container.className = 'mdblist-rating-container';
+  container.style.cssText = 'display:inline-flex; align-items:center; margin-left:6px;';
+  target.insertAdjacentElement('afterend', container);
 
-    fetchMDBList(type, tmdbId, container);
+  // <<< ВАЖНО: следим за наполнением контейнера и скрываем звёзды только когда есть данные >>>
+  watchRatingContainer(container);
 
-    if (currentImdbId) {
-      fetchRTCertified(currentImdbId, certified => {
-        if (certified) {
-          const img = container.querySelector('img[data-source="tomatoes"]');
-          if (img) img.src = LOGO.tomatoes_certified;
-        }
-      });
-      fetchRTAudienceCertified(currentImdbId, positive => {
-        if (positive) {
-          const img = container.querySelector('img[data-source="audience"]');
-          if (img) img.src = LOGO.rotten_ver;
-        }
-      });
-      fetchMCMustSee(currentImdbId, mustSee => {
-        if (mustSee) {
-          const img = container.querySelector('img[data-source="metacritic"]');
-          if (img) img.src = LOGO.metacriticms;
-        }
-      });
-      // === AlloCiné Ratings (icon + number) ===
-      fetchAllocineRatings(currentImdbId, container);
-      // === Douban Rating ===
-      fetchDoubanRating(currentImdbId, container, type);
-    }
+  // дальше — ваш существующий код загрузки рейтингов
+  fetchMDBList(type, tmdbId, container);
+
+  if (currentImdbId) {
+    fetchRTCertified(currentImdbId, certified => {
+      if (certified) {
+        const img = container.querySelector('img[data-source="tomatoes"]');
+        if (img) img.src = LOGO.tomatoes_certified;
+      }
+    });
+    fetchRTAudienceCertified(currentImdbId, positive => {
+      if (positive) {
+        const img = container.querySelector('img[data-source="audience"]');
+        if (img) img.src = LOGO.rotten_ver;
+      }
+    });
+    fetchMCMustSee(currentImdbId, mustSee => {
+      if (mustSee) {
+        const img = container.querySelector('img[data-source="metacritic"]');
+        if (img) img.src = LOGO.metacriticms;
+      }
+    });
+    fetchAllocineRatings(currentImdbId, container);
+    fetchDoubanRating(currentImdbId, container, type);
   }
+}
+
 
   // === MDBList ===
   function fetchMDBList(type, tmdbId, container) {
