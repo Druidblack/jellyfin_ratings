@@ -1,4 +1,6 @@
 # 🔥 Jellyfin ratings V2🔥
+**Corrections have been made only to the conversion, which I recommend to install through the JavaScript Injector Plugin**
+
 **Differences between the second version and the first:**
 
 1. Getting more ratings and additional certifications from Metacritic and Rottentomates sites
@@ -33,7 +35,7 @@ To use these userscripts, you need a userscript add-on or extension such as [Tam
 ***This is the most convenient installation method.***
 With this installation, obtaining a certificate from the Metacritic website will not work, and obtaining Rottentomates certificates and ratings from the AlloCiné and Douban websites may be unstable. This is due to the limitations of the free proxy servers that are used to receive the data.
 
-Install the plugin [Jellyfin Custom JavaScript Plugin](https://github.com/johnpc/jellyfin-plugin-custom-javascript)
+Install the plugin [JavaScript Injector Plugin](https://github.com/n00bcodr/Jellyfin-JavaScript-Injector)
 
 Copy the contents of the file [ratings.js](https://github.com/Druidblack/jellyfin_ratings/blob/main/jellyfin_ratings_v2.js) in the plugin window. Save and reload the page.
 After installation, you may need to clear the cache. The cache for JMP is located at C:\Users\USERNAME\AppData\Local\Jellyfin Media Player\cache
