@@ -1,6 +1,10 @@
 # 🔥 Jellyfin ratings V2🔥
 **Corrections have been made only to the conversion, which I recommend to install through the JavaScript Injector Plugin**
 
+🔥The latest changes have been tested on jellyfin version 10.11.1 with the JavaScript Injector plugin (version 3.0.1.0)
+In the latest version, to get episode ratings, you need to use the API KEY from the themoviedb website. Getting episode ratings will only work with jellyfin 10.11+ (older versions will display a rating from jellyfin) 🔥
+
+
 **Differences between the second version and the first:**
 
 1. Getting more ratings and additional certifications from Metacritic and Rottentomates sites
