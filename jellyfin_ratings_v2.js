@@ -9,7 +9,8 @@ if (typeof GM_xmlhttpRequest === 'undefined') {
     'graphql.anilist.co',
     'query.wikidata.org',
     'www.google.com',
-    'kinopoiskapiunofficial.tech'
+    'kinopoiskapiunofficial.tech',
+	'api.themoviedb.org' 
   ];
 
   window.GM_xmlhttpRequest = function({ method = 'GET', url, headers = {}, data, onload, onerror }) {
@@ -50,6 +51,7 @@ if (typeof GM_xmlhttpRequest === 'undefined') {
   // === API Keys ===
   const MDBLIST_API_KEY    = 'api_key';
   const KINOPOISK_API_KEY  = 'api_key';
+  const TMDB_API_KEY       = 'api_key';
 
   // === Logos ===
   const LOGO = {
@@ -163,10 +165,24 @@ function scanLinks() {
 
 
 function processLink(link) {
+  // Сначала пытаемся распознать ссылку серии:
+  // https://www.themoviedb.org/tv/{tvId}/season/{s}/episode/{e}
+  const ep = link.href.match(/themoviedb\.org\/tv\/(\d+)\/season\/(\d+)\/episode\/(\d+)/);
+
+  // Базовый разбор для movie/tv
   const m = link.href.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
   if (!m) return;
   const type   = m[1] === 'tv' ? 'show' : 'movie';
   const tmdbId = m[2];
+
+
+  // Если это страница эпизода — сформируем объект с параметрами эпизода
+  const episodeInfo = ep ? {
+    isEpisode: true,
+    tvId: ep[1],
+    season: parseInt(ep[2], 10),
+    episode: parseInt(ep[3], 10)
+  } : null;
 
   const presentRe = '(?:present|now|current|Н\\/В|Н\\.В\\.|н\\/в|н\\.в\\.|по\\s*наст\\.?\\s*времен[ию]?)';
   const dash = '[–—-]'; // варианты тире/дефиса
@@ -182,18 +198,18 @@ function processLink(link) {
     const lastItem   = box.querySelector('.mediaInfoItem:last-of-type');
 
     const anchor = officialEl || yearEl || runtimeEl || lastItem;
-    if (anchor) insert(anchor, type, tmdbId);
+    if (anchor) insert(anchor, type, tmdbId, episodeInfo);
   });
 
   // 2) На случай, если официальный рейтинг есть вне .itemMiscInfo-primary (редко) — вставляем один раз и там
   document.querySelectorAll('.mediaInfoItem.mediaInfoText.mediaInfoOfficialRating').forEach(el => {
     if (!el.closest('.itemMiscInfo.itemMiscInfo-primary')) {
-      insert(el, type, tmdbId);
+      insert(el, type, tmdbId, episodeInfo);
     }
   });
 }
 
-function insert(target, type, tmdbId) {
+function insert(target, type, tmdbId, episodeInfo) {
   // удаляем предыдущий контейнер сразу после якоря
   while (target.nextElementSibling?.classList.contains('mdblist-rating-container')) {
     const old = target.nextElementSibling;
@@ -209,6 +225,12 @@ function insert(target, type, tmdbId) {
 
   // <<< ВАЖНО: следим за наполнением контейнера и скрываем звёзды только когда есть данные >>>
   watchRatingContainer(container);
+  
+   // >>> Если это страница ЭПИЗОДА — грузим ТОЛЬКО рейтинг серии TMDb и выходим
+  if (episodeInfo?.isEpisode) {
+    fetchTmdbEpisodeRating(episodeInfo.tvId, episodeInfo.season, episodeInfo.episode, container);
+    return;
+  }
 
   // дальше — ваш существующий код загрузки рейтингов
   fetchMDBList(type, tmdbId, container);
@@ -235,6 +257,57 @@ function insert(target, type, tmdbId) {
     fetchAllocineRatings(currentImdbId, container);
     fetchDoubanRating(currentImdbId, container, type);
   }
+}
+
+
+// === TMDb Episode Rating ===
+function fetchTmdbEpisodeRating(tvId, season, episode, container) {
+  if (!TMDB_API_KEY || TMDB_API_KEY === 'api_key') {
+    console.warn('[TMDb] API key is not set');
+    return;
+  }
+
+  const url = `https://api.themoviedb.org/3/tv/${tvId}/season/${season}/episode/${episode}?api_key=${TMDB_API_KEY}`;
+
+  GM_xmlhttpRequest({
+    method: 'GET',
+    url,
+    onload(res) {
+      if (res.status !== 200) {
+        console.warn('[TMDb] episode status:', res.status);
+        return;
+      }
+      let data;
+      try { data = JSON.parse(res.responseText); }
+      catch (e) {
+        console.error('[TMDb] JSON parse error:', e);
+        return;
+      }
+
+      const avg  = Number(data.vote_average);
+      const cnt  = Number(data.vote_count);
+
+      // Нет голосов — ничего не рисуем, чтобы встроенные звезды не скрылись
+      if (!Number.isFinite(avg) || avg <= 0 || !Number.isFinite(cnt) || cnt <= 0) return;
+
+      const valueText = avg.toFixed(1); // формат "7.8"
+      const img = document.createElement('img');
+      img.src = LOGO.tmdb;
+      img.alt = 'TMDb';
+      img.dataset.source = 'tmdb';
+      img.title = `TMDb (Episode): ${valueText} • ${cnt} votes`;
+      img.style.cssText = 'height:1.5em; margin-right:4px; vertical-align:middle;';
+      container.appendChild(img);
+
+      const span = document.createElement('span');
+      span.textContent = valueText;
+      span.style.cssText = 'margin-right:8px; font-size:1em; vertical-align:middle;';
+      container.appendChild(span);
+    },
+    onerror(err) {
+      console.error('[TMDb] episode request error:', err);
+    }
+  });
 }
 
 
