@@ -155,12 +155,18 @@ function scanLinks() {
   // Раньше было:
   // document.querySelectorAll('div.starRatingContainer.mediaInfoItem, div.mediaInfoItem.mediaInfoCriticRating').forEach(...)
 
-  // обрабатываем TMDB-ссылки
-  document.querySelectorAll('a.emby-button[href*="themoviedb.org/"]').forEach(a => {
-    if (a.dataset.mdblistProcessed) return;
-    a.dataset.mdblistProcessed = 'true';
-    processLink(a);
-  });
+// обрабатываем TMDB-ссылки (generic -> season -> episode)
+	const tmdbLinks = Array.from(document.querySelectorAll('a.emby-button[href*="themoviedb.org/"]'))
+	  .filter(a => !a.dataset.mdblistProcessed)
+	  .sort((a,b) => {
+		const s = h => /\/episode\//.test(h) ? 2 : (/\/season\//.test(h) ? 1 : 0);
+		return s(a.href) - s(b.href);
+	  });
+
+	tmdbLinks.forEach(a => {
+	  a.dataset.mdblistProcessed = 'true';
+	  processLink(a);
+	});
 }
 
 
@@ -168,6 +174,9 @@ function processLink(link) {
   // Сначала пытаемся распознать ссылку серии:
   // https://www.themoviedb.org/tv/{tvId}/season/{s}/episode/{e}
   const ep = link.href.match(/themoviedb\.org\/tv\/(\d+)\/season\/(\d+)\/episode\/(\d+)/);
+  
+    // Затем — ссылку сезона (при этом исключаем эпизод)
+  const sn = !ep && link.href.match(/themoviedb\.org\/tv\/(\d+)\/season\/(\d+)(?!\/episode)/);
 
   // Базовый разбор для movie/tv
   const m = link.href.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
@@ -176,13 +185,17 @@ function processLink(link) {
   const tmdbId = m[2];
 
 
-  // Если это страница эпизода — сформируем объект с параметрами эпизода
+  // Контекст TMDb: либо эпизод, либо сезон, либо null
   const episodeInfo = ep ? {
     isEpisode: true,
     tvId: ep[1],
     season: parseInt(ep[2], 10),
     episode: parseInt(ep[3], 10)
-  } : null;
+  } : (sn ? {
+    isSeason: true,
+    tvId: sn[1],
+    season: parseInt(sn[2], 10)
+  } : null);
 
   const presentRe = '(?:present|now|current|Н\\/В|Н\\.В\\.|н\\/в|н\\.в\\.|по\\s*наст\\.?\\s*времен[ию]?)';
   const dash = '[–—-]'; // варианты тире/дефиса
@@ -230,6 +243,12 @@ function insert(target, type, tmdbId, episodeInfo) {
   if (episodeInfo?.isEpisode) {
     fetchTmdbEpisodeRating(episodeInfo.tvId, episodeInfo.season, episodeInfo.episode, container);
     return;
+  }
+  
+  // >>> Если это страница СЕЗОНА — грузим ТОЛЬКО рейтинг сезона TMDb и выходим
+   if (episodeInfo?.isSeason) {
+	fetchTmdbSeasonRating(episodeInfo.tvId, episodeInfo.season, container);
+	return;
   }
 
   // дальше — ваш существующий код загрузки рейтингов
@@ -309,6 +328,57 @@ function fetchTmdbEpisodeRating(tvId, season, episode, container) {
     }
   });
 }
+
+// === TMDb Season Rating ===
+function fetchTmdbSeasonRating(tvId, season, container) {
+  if (!TMDB_API_KEY || TMDB_API_KEY === 'api_key') {
+    console.warn('[TMDb] API key is not set');
+    return;
+  }
+
+  const url = `https://api.themoviedb.org/3/tv/${tvId}/season/${season}?api_key=${TMDB_API_KEY}`;
+
+  GM_xmlhttpRequest({
+    method: 'GET',
+    url,
+    onload(res) {
+      if (res.status !== 200) {
+        console.warn('[TMDb] season status:', res.status);
+        return;
+      }
+      let data;
+      try { data = JSON.parse(res.responseText); }
+      catch (e) {
+        console.error('[TMDb] JSON parse error:', e);
+        return;
+      }
+
+      const avg = Number(data.vote_average);
+      const cnt = Number(data.vote_count);
+
+      // Нет голосов — ничего не рисуем, чтобы встроенные звезды не скрылись
+      if (!Number.isFinite(avg) || avg <= 0 || !Number.isFinite(cnt) || cnt <= 0) return;
+
+      const valueText = avg.toFixed(1);
+      const img = document.createElement('img');
+      img.src = LOGO.tmdb;
+      img.alt = 'TMDb';
+      img.dataset.source = 'tmdb';
+      img.title = `TMDb (Season): ${valueText} • ${cnt} votes`;
+      img.style.cssText = 'height:1.5em; margin-right:4px; vertical-align:middle;';
+      container.appendChild(img);
+
+      const span = document.createElement('span');
+      span.textContent = valueText;
+      span.style.cssText = 'margin-right:8px; font-size:1em; vertical-align:middle;';
+      container.appendChild(span);
+    },
+    onerror(err) {
+      console.error('[TMDb] season request error:', err);
+    }
+  });
+}
+
 
 
   // === MDBList ===
