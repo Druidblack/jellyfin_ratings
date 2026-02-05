@@ -1,4 +1,9 @@
-# 🔥 Jellyfin ratings V2🔥
+# 🔥 [A plugin with advanced features is now available](https://github.com/Druidblack/Jellyfin.Plugin.MDBList_Ratings) 🔥
+
+# ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+
+
+🔥 Jellyfin ratings V2🔥
 **Corrections have been made only to the conversion, which I recommend to install through the JavaScript Injector Plugin**
 
 🔥The latest changes have been tested on jellyfin version 10.11.1 with the JavaScript Injector plugin (version 3.0.1.0)
